@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script src='https://cdn.jsdelivr.net/npm/big.js@6.0.0/big.min.js'></script>
+</head>
+<body>
+  <p>Delegated:<input id="myDelegated" type="text" onfocusout="main()" value="1000"></p>
+  <div id="pools"></div>
+</body>
+<script>
+
+// https://api.korellia.kyve.network/kyve/registry/v1beta1/pools?pagination.offset=0&pagination.limit=12&pagination.countTotal=true&search=&runtime=&paused=false
+async function getPools() {
+    console.log( `getPools` )
+    const response = await axios.get( `https://api.korellia.kyve.network/kyve/registry/v1beta1/pools?pagination.offset=0&pagination.limit=12&pagination.countTotal=true&search=&runtime=&paused=false` );
+    console.log(response);
+    //document.getElementById( 'pools' ).innerText = JSON.stringify( response.data )
+    return response.data.pools
+}
+
+// https://api.korellia.kyve.network/kyve/registry/v1beta1/pool/7
+async function getPool( poolID ) {
+  console.log( `getPool ${ poolID }` )
+    const response = await axios.get( `https://api.korellia.kyve.network/kyve/registry/v1beta1/pool/${ poolID }` );
+    console.log(response);
+    //document.getElementById( 'pools' ).innerText = JSON.stringify( response.data )
+    return response.data.pool
+}
+
+// https://api.korellia.kyve.network/kyve/registry/v1beta1/stakers_list/7
+async function getStakers( poolID ) {
+  console.log( `getStakers ${ poolID }` )
+    const response = await axios.get( `https://api.korellia.kyve.network/kyve/registry/v1beta1/stakers_list/${ poolID }` );
+    console.log(response);
+    //document.getElementById( 'stakers' ).innerText = JSON.stringify( response.data )
+    return response.data.stakers
+}
+
+/*
+How is upload probability determined? 
+N: Number of validators
+i: i-th validator
+s_i: Stake of the i-th validator
+d_i: sum of all delegations to the i-th validator
+
+
+Define weigth for i-th validator:
+w_i = s_i + sqrt(10000 * (d_i + 10000) - 10000)
+*The square-root is choosen to avoid that everybody delegates to the validator with the highest upload probability. 
+We need to do something like this because we have risk-free delegation.
+
+Probability to get selected as an uploader:
+p_i = w_i / (sum_k=1_N w_k) 
+*/
+function weight( staker ) {
+  //const weight = BigInt(staker.amount) + sqrtBigInt(BigInt(10000) * (BigInt(staker.total_delegation) + BigInt(10000)) - BigInt(10000))
+  const weight = Big(staker.total_delegation).plus(10000).times(10000).minus(10000).sqrt().plus(Big(staker.amount))
+  return weight
+}
+
+function sqrtBigInt(value) {
+    if (value < 0n) {
+        throw 'square root of negative numbers is not supported'
+    }
+
+    if (value < 2n) {
+        return value;
+    }
+
+    function newtonIteration(n, x0) {
+        const x1 = ((n / x0) + x0) >> 1n;
+        if (x0 === x1 || x0 === (x1 - 1n)) {
+            return x0;
+        }
+        return newtonIteration(n, x1);
+    }
+
+    return newtonIteration(value, 1n);
+}
+
+/*
+function uploadP( staker ) {
+  var w = []
+  w[i] = weight( staker )
+  /*
+  N: Number of validators
+  i: i-th validator
+  s_i: Stake of the i-th validator
+  d_i: sum of all delegations to the i-th validator
+  *
+  var p_i = w[i] / 1; // (sum_k=1_N w_k)
+  return p_i
+}
+*/
+function append( text ) {
+  var node = document.createElement( "div" )
+  const textnode = document.createTextNode( text );
+  node.appendChild( textnode );
+  document.getElementById( "nodeRoot" ).appendChild( node );
+}
+
+function reset() {
+
+  var nodeRoot = document.getElementById( "nodeRoot" )
+  if ( nodeRoot ) {
+    nodeRoot.remove()
+  }
+  nodeRoot = document.createElement( "div" );
+  nodeRoot.setAttribute("id", "nodeRoot");
+
+  document.getElementById( "pools" ).appendChild( nodeRoot );
+}
+
+function formatStaker( staker, poolData ) {
+  const account = staker.account.slice(-4)
+  var account2 = ""
+  if ( poolData.uploader == staker.account ) account2 = `*UP*`
+  if ( poolData.nextUploader == staker.account ) account2 = `*NUP*`
+  return `${ account2 }${ account } S:${ formatBig(Big(staker.amount)) } D:${ formatBig(Big(staker.total_delegation)) } C:${ formatPerc(staker.commission) } W:${ staker.weight.toFixed(2) } Up: ${ formatPerc(staker.uploadP) } ${ staker.goodness }`
+}
+function formatBig( big ) {
+  return big.div( Big(10).pow(9) ).toFixed(2)
+}
+function formatPerc( n ) {
+  return `${ (n*100).toFixed(2) }%`
+}
+
+
+async function main() {
+
+  try {
+    reset()
+  
+    const pools = await getPools()
+
+    for(var i=0; i<pools.length; i++) {
+      const pool = await getPool( pools[i].id )
+      //append( JSON.stringify( pool ) )
+      append( pool.name )
+      console.log( pool.name )
+
+      const poolData = {}
+      poolData.uploader = pool.bundle_proposal.uploader
+      poolData.nextUploader = pool.bundle_proposal.next_uploader
+
+      const stakers = await getStakers( pool.id )
+      //append( JSON.stringify( stakers ) )
+
+      var weightTotal = Big(0)
+      var uploadTotal = 0
+      for(var j=0; j<stakers.length; j++) {
+
+        const w_j = weight( stakers[j] )
+        stakers[j].weight = Big(w_j)
+        weightTotal = weightTotal.add(w_j)
+
+        //append( formatStaker( newSTakers[j]) )
+        //append( JSON.stringify( stakers[j] ) )
+      }
+      console.log( 'weightTotal', weightTotal )
+      for(var j=0; j<stakers.length; j++) {
+        // Number(a * 100n / b) / 100
+        //stakers[j].uploadP = stakers[j].weight / weightTotal
+        //stakers[j].uploadP = Number(stakers[j].weight * 100n / weightTotal) / 100
+        stakers[j].uploadP = Number(stakers[j].weight / weightTotal)
+        uploadTotal += stakers[j].uploadP
+        console.log( stakers[j].weight, weightTotal, stakers[j].uploadP )
+
+        const myDelegetedKyve = parseInt( document.getElementById('myDelegated').value )
+        const myDelegatedGwei = Big( myDelegetedKyve ).times( Big(1000000000) )
+        const myWeight = myDelegatedGwei.div( Big(stakers[j].total_delegation).add( myDelegatedGwei ) )
+
+        stakers[j].goodness = ( myWeight.times( 1-stakers[j].commission ).times( stakers[j].uploadP ) ).toFixed(4) 
+      }
+      console.log( 'uploadTotal', uploadTotal )
+
+
+      stakers.sort(function compareFn(a, b) { 
+        return a.goodness >= b.goodness ? -1 : 1
+      })
+
+      for(var j=0; j<stakers.length; j++) {
+        append( formatStaker( stakers[j], poolData ) )
+        //append( JSON.stringify( stakers[j] ) )
+      }
+    }
+    
+  } catch (error) {
+    console.error(error);
+  }
+  
+}
+
+main()
+
+</script>
+</html>
