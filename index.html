@@ -9,10 +9,16 @@
     <script src='https://cdn.jsdelivr.net/npm/big.js@6.0.0/big.min.js'></script>
 </head>
 <body>
-  <p>Delegated:<input id="myDelegated" type="text" onfocusout="main()" value="1000"></p>
+  <div id="error"></div>
+  <p>Delegated:<input id="myDelegated" type="text" value="1000">
+  <input type="submit" value="Update" onclick="return onClickUpdate();" />
+  </p>
   <div id="pools"></div>
 </body>
 <script>
+
+const uploadPerDay = 288 // 1 every 5 minutes
+var busy = false;
 
 // https://api.korellia.kyve.network/kyve/registry/v1beta1/pools?pagination.offset=0&pagination.limit=12&pagination.countTotal=true&search=&runtime=&paused=false
 async function getPools() {
@@ -106,6 +112,8 @@ function append( text ) {
 
 function reset() {
 
+  document.getElementById( "error" ).innerText = ""
+
   var nodeRoot = document.getElementById( "nodeRoot" )
   if ( nodeRoot ) {
     nodeRoot.remove()
@@ -121,7 +129,7 @@ function formatStaker( staker, poolData ) {
   var account2 = ""
   if ( poolData.uploader == staker.account ) account2 = `*UP*`
   if ( poolData.nextUploader == staker.account ) account2 = `*NUP*`
-  return `${ account2 }${ account } S:${ formatBig(Big(staker.amount)) } D:${ formatBig(Big(staker.total_delegation)) } C:${ formatPerc(staker.commission) } W:${ staker.weight.toFixed(2) } Up: ${ formatPerc(staker.uploadP) } ${ staker.goodness }`
+  return `${ account2 }${ account } S:${ formatBig(Big(staker.amount)) } D:${ formatBig(Big(staker.total_delegation)) } C:${ formatPerc(staker.commission) } W:${ staker.weight.toFixed(2) } Up: ${ formatPerc(staker.uploadP) } ${ staker.goodness } ${ staker.minimumTime.toFixed() }mins`
 }
 function formatBig( big ) {
   return big.div( Big(10).pow(9) ).toFixed(2)
@@ -130,8 +138,13 @@ function formatPerc( n ) {
   return `${ (n*100).toFixed(2) }%`
 }
 
+async function update() {
 
-async function main() {
+  if (busy) {
+    document.getElementById( "error" ).innerText = 'Update already running...'
+    return
+  }
+  busy = true
 
   try {
     reset()
@@ -171,6 +184,8 @@ async function main() {
         uploadTotal += stakers[j].uploadP
         console.log( stakers[j].weight, weightTotal, stakers[j].uploadP )
 
+        stakers[j].minimumTime = (24*60)/(uploadPerDay * stakers[j].uploadP)
+
         const myDelegetedKyve = parseInt( document.getElementById('myDelegated').value )
         const myDelegatedGwei = Big( myDelegetedKyve ).times( Big(1000000000) )
         const myWeight = myDelegatedGwei.div( Big(stakers[j].total_delegation).add( myDelegatedGwei ) )
@@ -192,11 +207,20 @@ async function main() {
     
   } catch (error) {
     console.error(error);
+    document.getElementById( "error" ).innerText = error
   }
+
+  busy = false
   
 }
 
-main()
+function onClickUpdate() {
+   update();
+   return true;
+}
+
+
+update()
 
 </script>
 </html>
