@@ -13,11 +13,15 @@
   <p>Delegated:<input id="myDelegated" type="text" value="1000">
   <input type="submit" value="Update" onclick="return onClickUpdate();" />
   </p>
+  <hr/>
+  <div id="topValidators"></div>
+  <hr/>
   <div id="pools"></div>
 </body>
 <script>
 
 const uploadPerDay = 288 // 1 every 5 minutes
+const topValidators = []
 var busy = false;
 
 // https://api.korellia.kyve.network/kyve/registry/v1beta1/pools?pagination.offset=0&pagination.limit=12&pagination.countTotal=true&search=&runtime=&paused=false
@@ -112,6 +116,7 @@ function append( text ) {
 
 function reset() {
 
+  document.getElementById( 'topValidators' ).innerText = ""
   document.getElementById( "error" ).innerText = ""
 
   var nodeRoot = document.getElementById( "nodeRoot" )
@@ -198,6 +203,9 @@ async function update() {
       stakers.sort(function compareFn(a, b) { 
         return a.goodness >= b.goodness ? -1 : 1
       })
+
+      document.getElementById( 'topValidators' ).innerText += 
+        `\n${pool.name} ${stakers[0].account.slice(-4)} ${stakers[0].goodness} ${ stakers[0].minimumTime.toFixed() }mins`
 
       for(var j=0; j<stakers.length; j++) {
         append( formatStaker( stakers[j], poolData ) )
